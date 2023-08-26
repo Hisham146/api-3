@@ -17,12 +17,14 @@ export const createAd = async (req, res, next) => {
   }
 };
 export const deleteAd = async (req, res, next) => {
-  try {
+  try { 
     const ad = await Ad.findById(req.params.id);
-    if (ad.userId !== req.userId)
+    if(!ad) return next(createError(403, "No ad found!"));
+    const userId = req.query.userId;
+    if (ad.userId !== userId)
       return next(createError(403, "You can delete only your ad!"));
-
-    await Ad.findByIdAndDelete(req.params.id);
+     console.log("id", ad._id  );
+    await Ad.findByIdAndDelete(ad._id);
     res.status(200).send("Ad has been deleted!");
   } catch (err) {
     next(err);
@@ -57,7 +59,7 @@ export const updateAd = async (req, res, next) => {
     if (ad.userId !== userId) {
       return next(createError(403, "You can update only your ad!"));
     }
-    const priceee = req.body.price
+  
 
     // Update the ad data with the new values from req.body
     ad.title = req.body.title;
@@ -144,6 +146,21 @@ export const adminSelectedDeleteAd = async (req, res, next) => {
     next(err);
   }
 };
+
+export const userMyAds = async (req, res, next) => {
+  try{
+    const checkUser = await User.findOne({ _id: req.params.id});
+    if (!checkUser) {
+      return res.status(400).send("Username doesn't exist*");
+    }
+   
+    const ads = await Ad.find({ userId: req.params.id }).sort({ createdAt: -1 }).exec();
+     res.status(200).send(ads);
+
+  }catch(err){
+   next(err)
+  }
+}
 
 export const getuserAds = async (req, res, next) => {
   try{
