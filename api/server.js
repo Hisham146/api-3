@@ -27,7 +27,7 @@ const connect = async () => {
 };
 // origin: ["http://localhost:3000", "http://localhost:3001", "https://shampy.online" ],
 const corsOptions = {
-  origin: ["https://shampy.vercel.app"],
+  origin: ["https://shampy.vercel.app","http://localhost:3000" ],
   credentials: true,
 };
 
