@@ -91,9 +91,8 @@ export const updateAd = async (req, res, next) => {
 
 export const getAds = async (req, res, next) => {
   const q = req.query;
-  const searchQuery = q.search
-    ? q.search.split(' ').map(word => `(?=.*${word})`).join('')
-    : null;
+  const searchQuery = q.search ? q.search : null;
+
 
   const filters = {
     ...(q.userId && { userId: q.userId }),
@@ -103,18 +102,185 @@ export const getAds = async (req, res, next) => {
         ...(q.max && { $lt: q.max }),
       },
     }),
-    ...(searchQuery && { title: { $regex: searchQuery, $options: "i" } }), // Use the modified searchQuery
     ...(q.vehiclemake && { vehiclemake: q.vehiclemake }),
     ...(q.vehiclemodel && { vehiclemodel: q.vehiclemodel }),
     ...(q.location && { location: q.location }),
   };
 
-  try {
-    const ads = await Ad.find(filters).sort({ [q.sort]: -1, createdAt: -1 });
-    res.status(200).send(ads);
+  
+    let adsQuery;
+
+    if (searchQuery) {
+      let searchedQuery;
+
+      try {
+      const searchResult1 = await Ad.aggregate([
+        {
+          '$search': {
+            'index': 'searchIndex',
+            'text': {
+              'query': searchQuery,
+              'path': 'vehiclemake',
+              'fuzzy': {
+                'maxEdits': 2
+              }
+            }
+          }
+        },
+        {
+          $match: filters, // Apply filters to the search results
+        },
+        {
+          '$sort': { 'createdAt': -1 } // Sort by the appropriate field, e.g., 'createdAt'
+        }
+      ]);
+    
+
+      const searchResult2 = await Ad.aggregate([
+        {
+          '$search': {
+            'index': 'searchIndex',
+            'text': {
+              'query': searchQuery,
+              'path': 'vehiclevarient',
+              'fuzzy': {
+                'maxEdits': 2
+              }
+            }
+          }
+        },
+        {
+          $match: filters, // Apply filters to the search results
+        },
+        {
+          '$sort': { 'createdAt': -1 } // Sort by the appropriate field, e.g., 'createdAt'
+        }
+      ]);
+
+
+      const searchResult3 = await Ad.aggregate([
+        {
+          '$search': {
+            'index': 'searchIndex',
+            'text': {
+              'query': searchQuery,
+              'path': 'vehiclemodel'
+            }
+          }
+        },
+        {
+          $match: filters, 
+        },
+        {
+          '$sort': { 'createdAt': -1 } 
+        }
+      ]);
+      console.log("Vehicle Models:");
+        searchResult3.forEach(result => {
+          console.log(result.vehiclemodel);
+        });
+        searchResult3.forEach(result => {
+          console.log(result.title);
+        });
+      
+      if (searchResult1.length === 0 && searchResult2.length === 0 && searchResult3.length === 0) {
+        console.log("No results found");
+        return res.status(204).send({ message: "No results found" });
+      }
+
+
+
+     const filteredSearchMake  = searchResult1.filter(item1 => searchResult3.some(item3 =>item1.vehiclemodel === item3.vehiclemodel && item1.vehiclemake === item3.vehiclemake ))
+      const filteredSearchVarient  = searchResult2.filter(item1 => searchResult3.some(item3 =>item1.vehiclemodel === item3.vehiclemodel && item1.vehiclevarient === item3.vehiclevarient ))
+
+      if ((searchResult2.length > 0 || searchResult1.length > 0 ) && searchResult3.length > 0 ){
+      if (searchResult2.length > 0 && filteredSearchVarient.length > 0 ){
+        console.log("entered1")
+            searchedQuery = searchResult2.filter(item1 => searchResult3.some(item3 =>item1.vehiclemodel === item3.vehiclemodel && item1.vehiclevarient === item3.vehiclevarient ))
+      }
+      else if ( searchResult1.length > 0 && filteredSearchMake.length > 0 )
+      {
+        console.log("entered2")
+         searchedQuery = searchResult1.filter(item1 => searchResult3.some(item3 =>item1.vehiclemodel === item3.vehiclemodel && item1.vehiclemake === item3.vehiclemake ))
+      }
+      else{
+         console.log("No results found");
+         return res.status(204).send({ message: "No results found" });
+      }
+    }
+    else if ( searchResult1.length > 0 && searchResult2.length > 0 ){
+      console.log("second part----")
+       if( searchResult1.length > 0 && searchResult2.length > 0 ){
+         console.log("entered3")
+           searchedQuery = searchResult2
+       }
+          else{
+             console.log("No results found----");
+             return res.status(204).send({ message: "No results found" });
+           }
+      }
+      else if ( searchResult1.length > 0 ){
+       console.log("second part----")
+        if( searchResult1.length > 0 ){
+          console.log("entered4")
+            searchedQuery = searchResult1
+        }
+           else{
+              console.log("No results found----");
+              return res.status(204).send({ message: "No results found" });
+            }
+       }
+       else if (searchResult2.length > 0 ){
+        if( searchResult2.length > 0  ){
+          console.log("entered5")
+            searchedQuery = searchResult2
+        }
+        else{
+          console.log("No results found----");
+          return res.status(204).send({ message: "No results found" });
+        }
+
+       }
+
+
+
+       else{
+        console.log("entered4")
+        searchedQuery = null;
+       }
+
+
+        if (searchedQuery !== null && searchedQuery.length > 0) {
+
+          const count = searchedQuery.length;
+          adsQuery = {
+            searchedQuery,
+            count,
+          };
+          const adsQueryJSON = JSON.stringify(adsQuery, null, 2);
+      
+
+          res.status(200).send(adsQueryJSON);
+        } 
+      }
+    catch (err) {
+     
+      console.error(err);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  } 
+
+    else {
+      try{
+      adsQuery = await Ad.find(filters).sort({ [q.sort]: -1, createdAt: -1 });
+    
+    const adsQueryJSON = JSON.stringify(adsQuery, null, 2);
+
+    res.status(200).send(adsQueryJSON);
   } catch (err) {
     next(err);
   }
+}
 };
 
 export const admingetAds = async (req, res, next) => {
