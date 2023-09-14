@@ -23,7 +23,6 @@ export const deleteAd = async (req, res, next) => {
     const userId = req.query.userId;
     if (ad.userId !== userId)
       return next(createError(403, "You can delete only your ad!"));
-     console.log("id", ad._id  );
     await Ad.findByIdAndDelete(ad._id);
     res.status(200).send("Ad has been deleted!");
   } catch (err) {
@@ -95,11 +94,10 @@ export const getAds = async (req, res, next) => {
 
 
   const filters = {
-    ...(q.userId && { userId: q.userId }),
     ...((q.min || q.max) && {
       price: {
-        ...(q.min && { $gt: q.min }),
-        ...(q.max && { $lt: q.max }),
+        ...(q.min && { $gt: parseInt(q.min) }),
+        ...(q.max && { $lt: parseInt(q.max) }),
       },
     }),
     ...(q.vehiclemake && { vehiclemake: q.vehiclemake }),
@@ -114,27 +112,26 @@ export const getAds = async (req, res, next) => {
       let searchedQuery;
 
       try {
-      const searchResult1 = await Ad.aggregate([
-        {
-          '$search': {
-            'index': 'searchIndex',
-            'text': {
-              'query': searchQuery,
-              'path': 'vehiclemake',
-              'fuzzy': {
-                'maxEdits': 2
+        const searchResult1 = await Ad.aggregate([
+          {
+            '$search': {
+              'index': 'searchIndex',
+              'text': {
+                'query': searchQuery,
+                'path': 'vehiclemake',
+                'fuzzy': {
+                  'maxEdits': 2
+                }
               }
             }
+          },
+          {
+            $match: filters, // Apply filters to the search results
+          },
+          {
+            '$sort': { 'createdAt': -1 } // Sort by the appropriate field, e.g., 'createdAt'
           }
-        },
-        {
-          $match: filters, // Apply filters to the search results
-        },
-        {
-          '$sort': { 'createdAt': -1 } // Sort by the appropriate field, e.g., 'createdAt'
-        }
-      ]);
-    
+        ]);
 
       const searchResult2 = await Ad.aggregate([
         {
@@ -175,77 +172,53 @@ export const getAds = async (req, res, next) => {
           '$sort': { 'createdAt': -1 } 
         }
       ]);
-      console.log("Vehicle Models:");
-        searchResult3.forEach(result => {
-          console.log(result.vehiclemodel);
-        });
-        searchResult3.forEach(result => {
-          console.log(result.title);
-        });
+
       
       if (searchResult1.length === 0 && searchResult2.length === 0 && searchResult3.length === 0) {
-        console.log("No results found");
         return res.status(204).send({ message: "No results found" });
       }
-
-
 
      const filteredSearchMake  = searchResult1.filter(item1 => searchResult3.some(item3 =>item1.vehiclemodel === item3.vehiclemodel && item1.vehiclemake === item3.vehiclemake ))
       const filteredSearchVarient  = searchResult2.filter(item1 => searchResult3.some(item3 =>item1.vehiclemodel === item3.vehiclemodel && item1.vehiclevarient === item3.vehiclevarient ))
 
       if ((searchResult2.length > 0 || searchResult1.length > 0 ) && searchResult3.length > 0 ){
       if (searchResult2.length > 0 && filteredSearchVarient.length > 0 ){
-        console.log("entered1")
             searchedQuery = searchResult2.filter(item1 => searchResult3.some(item3 =>item1.vehiclemodel === item3.vehiclemodel && item1.vehiclevarient === item3.vehiclevarient ))
       }
       else if ( searchResult1.length > 0 && filteredSearchMake.length > 0 )
       {
-        console.log("entered2")
+
          searchedQuery = searchResult1.filter(item1 => searchResult3.some(item3 =>item1.vehiclemodel === item3.vehiclemodel && item1.vehiclemake === item3.vehiclemake ))
       }
       else{
-         console.log("No results found");
          return res.status(204).send({ message: "No results found" });
       }
     }
     else if ( searchResult1.length > 0 && searchResult2.length > 0 ){
-      console.log("second part----")
        if( searchResult1.length > 0 && searchResult2.length > 0 ){
-         console.log("entered3")
            searchedQuery = searchResult2
        }
           else{
-             console.log("No results found----");
              return res.status(204).send({ message: "No results found" });
            }
       }
       else if ( searchResult1.length > 0 ){
-       console.log("second part----")
         if( searchResult1.length > 0 ){
-          console.log("entered4")
             searchedQuery = searchResult1
         }
            else{
-              console.log("No results found----");
               return res.status(204).send({ message: "No results found" });
             }
        }
        else if (searchResult2.length > 0 ){
         if( searchResult2.length > 0  ){
-          console.log("entered5")
             searchedQuery = searchResult2
         }
         else{
-          console.log("No results found----");
           return res.status(204).send({ message: "No results found" });
         }
-
        }
-
-
-
        else{
-        console.log("entered4")
         searchedQuery = null;
        }
 
@@ -272,8 +245,20 @@ export const getAds = async (req, res, next) => {
 
     else {
       try{
-      adsQuery = await Ad.find(filters).sort({ [q.sort]: -1, createdAt: -1 });
-    
+      const searchedQuery = await Ad.find(filters).sort({ [q.sort]: -1, createdAt: -1 });
+      if(searchedQuery.length<=0){
+        return res.status(204).send({ message: "No results found" });
+      }
+      if (Object.keys(filters).length > 0) {
+        const count = searchedQuery.length;
+        adsQuery = {
+          searchedQuery,
+          count,
+        };
+      } else {
+        adsQuery = searchedQuery ;
+      }
+
     const adsQueryJSON = JSON.stringify(adsQuery, null, 2);
 
     res.status(200).send(adsQueryJSON);
