@@ -16,7 +16,15 @@ export const sendEmail = async (email, subject, text) => {
       from: process.env.USER,
       to: email,
       subject: subject,
-      text: text,
+      text: 
+      `      Hey,
+             Please click on the link below to verify it's you.
+
+             Link: ${text}
+
+             Thanks.
+             Shampy MarketPlace.
+             `,
     };
     
     // Send the email
